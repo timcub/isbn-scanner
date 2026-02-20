@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>古本価格検索</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+
+<h2>古本検索</h2>
+
+<div>
+  <label>書名：</label><br>
+  <input type="text" id="title" placeholder="本のタイトル" style="width:100%; font-size:16px;">
+</div>
+
+<br>
+
+<div>
+  <label>ISBN（任意）：</label><br>
+  <input type="text" id="isbn" placeholder="ISBN" style="width:100%; font-size:16px;">
+</div>
+
+<br><br>
+
+<button onclick="searchAmazon()">Amazon</button>
+<button onclick="searchFuruhon()">日本の古本屋</button>
+<button onclick="searchYahoo()">ヤフオク</button>
+<button onclick="searchMercari()">メルカリ</button>
+
+<script>
+function getTitle() {
+  return encodeURIComponent(document.getElementById('title').value);
+}
+
+function searchAmazon() {
+  window.open("https://www.amazon.co.jp/s?k=" + getTitle(), "_blank");
+}
+
+function searchFuruhon() {
+  window.open("https://www.kosho.or.jp/products/list.php?mode=search&search_word=" + getTitle(), "_blank");
+}
+
+function searchYahoo() {
+  window.open("https://auctions.yahoo.co.jp/search/search?p=" + getTitle(), "_blank");
+}
+
+function searchMercari() {
+  window.open("https://www.mercari.com/jp/search/?keyword=" + getTitle(), "_blank");
+}
+</script>
+
+</body>
+</html>
