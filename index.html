@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>古本スキャナPro+</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+</head>
+<body style="font-family:sans-serif; padding:20px; background:#f0f0f2; margin:0;">
+
+  <h2 style="text-align:center;">ISBNスキャン</h2>
+
+  <div id="interactive" style="width:100%; height:250px; background:#000; border-radius:10px; overflow:hidden; position:relative;">
+    <div style="position:absolute; top:50%; left:5px; right:5px; height:2px; background:red; opacity:0.5;"></div>
+  </div>
+
+  <div style="margin-top:15px;">
+    <button onclick="startScanner()" style="background:#4CAF50; color:white; border:none; padding:15px; width:100%; border-radius:5px; font-weight:bold; font-size:16px;">
+      📷 カメラを起動
+    </button>
+  </div>
+
+  <div style="margin-top:20px;">
+    <input type="text" id="isbn" placeholder="スキャン結果" 
+      style="font-size:18px; width:100%; padding:12px; box-sizing:border-box; border:2px solid #ccc; border-radius:5px;">
+  </div>
+
+  <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+
+    <a href="#" onclick="return checkAndGo('amazon')" 
+      style="text-decoration:none; padding:16px 0; background:#ff9900; color:black; border-radius:5px; font-weight:bold; text-align:center;">
+      Amazon
+    </a>
+
+    <a href="#" onclick="return checkAndGo('kosho')" 
+      style="text-decoration:none; padding:16px 0; background:#333; color:white; border-radius:5px; font-weight:bold; text-align:center;">
+      日本の古本屋
+    </a>
+
+    <a href="#" onclick="return checkAndGo('yahoo')" 
+      style="text-decoration:none; padding:16px 0; background:#ff0033; color:white; border-radius:5px; font-weight:bold; text-align:center;">
+      ヤフオク
+    </a>
+
+    <a href="#" onclick="return checkAndGo('mercari')" 
+      style="text-decoration:none; padding:16px 0; background:#1ec700; color:white; border-radius:5px; font-weight:bold; text-align:center;">
+      メルカリ
+    </a>
+
+  </div>
+
+<script>
+let scannerActive = false;
+
+function startScanner() {
+  if (scannerActive) return;
+
+  Quagga.init({
+    inputStream: {
+      name: "Live",
+      type: "LiveStream",
+      target: document.querySelector('#interactive'),
+      constraints: { facingMode: "environment" }
+    },
+    decoder: { readers: ["ean_reader"] },
+    locate: true
+  }, function(err) {
+    if (err) { alert("カメラ起動失敗: " + err); return; }
+    Quagga.start();
+    scannerActive = true;
+  });
+
+  Quagga.onDetected(function(data) {
+    const code = data.codeResult.code;
+    if (code.startsWith("978") || code.startsWith("979")) {
+      document.getElementById("isbn").value = code;
+      Quagga.stop();
+      scannerActive = false;
+    }
+  });
+}
+
+function checkAndGo(type) {
+  const isbn = document.getElementById("isbn").value.replace(/[^0-9]/g, "");
+  if (!isbn) {
+    alert("先にバーコードを読み取ってください");
+    return false;
+  }
+
+  let url = "";
+
+  if (type === 'amazon') {
+    url = "https://www.amazon.co.jp/s?k=" + isbn + "&i=stripbooks";
+  } 
+  else if (type === 'kosho') {
+    url = "https://www.kosho.or.jp/products/search.php?search_type=isbn&search_text=" + isbn;
+  }
+  else if (type === 'yahoo') {
+    url = "https://auctions.yahoo.co.jp/search/search?p=" + isbn;
+  }
+  else if (type === 'mercari') {
+    url = "https://www.mercari.com/jp/search/?keyword=" + isbn;
+  }
+
+  window.open(url, '_blank');
+  return false;
+}
+</script>
+
+</body>
+</html>
