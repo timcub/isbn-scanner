@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>古本スキャナ（カメラ強制終了版）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+body { font-family: -apple-system, sans-serif; background: #f2f2f2; margin: 0; padding: 16px; padding-bottom: 100px; }
+h2 { font-size: 18px; margin-bottom: 10px; }
+
+/* カメラエリアを表示する親コンテナ */
+#scanner-wrapper { display: none; margin-bottom: 12px; }
+#interactive { 
+  width: 100%; 
+  height: 240px; 
+  background: #000; 
+  border-radius: 10px; 
+  overflow: hidden; 
+  position: relative; 
+}
+#interactive video, #interactive canvas { 
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; 
+}
+.scan-line { position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: red; box-shadow: 0 0 4px red; z-index: 10; }
+
+.input-group { display: flex; gap: 8px; margin-bottom: 12px; }
+input { flex: 1; padding: 12px; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+textarea { width: 100%; height: 60px; padding: 12px; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; margin-bottom: 12px; }
+
+.clear-input-btn { width: 44px; height: 44px; background: #ccc; color: #fff; border-radius: 8px; border: none; font-size: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+button { width: 100%; padding: 16px; font-size: 16px; border-radius: 8px; border: none; margin-bottom: 12px; cursor: pointer; font-weight: bold; }
+.scan-btn { background: #333; color: #fff; }
+.amazon { background: #ff9900; color: #000; }
+.yahoo { background: #7b1fa2; color: #fff; }
+.kosho { background: #2e7d32; color: #fff; margin-bottom: 28px; }
+.mercari { background: #e53935; color: #fff; }
+
+#history-area { margin-top: 30px; border-top: 2px solid #ccc; padding-top: 10px; }
+.history-item { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 5px solid #333; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h2>📷 ISBNスキャン</h2>
+
+<div id="scanner-wrapper">
+  <div id="interactive"></div>
+</div>
+
+<button class="scan-btn" onclick="startScanner()">カメラ起動</button>
+
+<div class="input-group">
+  <input type="text" id="isbn" placeholder="ISBNコード">
+  <button class="clear-input-btn" onclick="resetField('isbn')">×</button>
+</div>
+<button class="amazon" onclick="openSearch('amazon')">Amazonで検索</button>
+
+<textarea id="memo" placeholder="価格メモ"></textarea>
+
+<div class="input-group">
+  <input type="text" id="title" placeholder="本のタイトル（自動入力）">
+  <button class="clear-input-btn" onclick="resetField('title')">×</button>
+</div>
+
+<button class="yahoo" onclick="openSearch('yahoo')">ヤフオク落札相場</button>
+<button class="kosho" onclick="openSearch('kosho')">日本の古本屋</button>
+<button class="mercari" onclick="openSearch('mercari')">メルカリ</button>
+
+<div id="history-area">
+  <h3>🕒 スキャン履歴</h3>
+  <button onclick="clearHistory()" style="width:auto; font-size:12px; padding:8px; background:#999; color:#fff;">履歴をすべて削除</button>
+  <div id="history-list"></div>
+</div>
+
+<script>
+let isScanning = false;
+window.onload = displayHistory;
+
+function resetField(id) { document.getElementById(id).value = ""; }
+
+function startScanner() {
+  if (isScanning) return;
+  isScanning = true;
+  
+  const wrapper = document.getElementById('scanner-wrapper');
+  const interactive = document.getElementById('interactive');
+  
+  // 以前の残骸を完全にリセットし、赤い線を入れる
+  interactive.innerHTML = '<div class="scan-line"></div>';
+  wrapper.style.display = 'block';
+
+  Quagga.init({
+    inputStream: {
+      name: "Live",
+      type: "LiveStream",
+      target: interactive,
+      constraints: { facingMode: "environment" }
+    },
+    decoder: { readers: ["ean_reader"] }
+  }, function(err) {
+    if (err) { alert("カメラ起動失敗"); stopScanner(); return; }
+    Quagga.start();
+  });
+
+  Quagga.onDetected(function(data) {
+    const code = data.codeResult.code;
+    if (code.startsWith("978") || code.startsWith("979")) {
+      document.getElementById("isbn").value = code;
+      document.getElementById("title").value = "検索中...";
+      stopScanner(); // まずカメラを止める
+      fetchTitle(code);
+    }
+  });
+}
+
+function stopScanner() {
+  isScanning = false;
+
+  // 1. Quagga停止
+  Quagga.stop();
+
+  // 2. ブラウザのカメラストリームを明示的に全停止
+  const video = document.querySelector('#interactive video');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+    video.load(); // ビデオをリセット
+    video.remove(); // ビデオ要素そのものを削除
+  }
+
+  // 3. 画面から消す
+  document.getElementById('scanner-wrapper').style.display = 'none';
+  document.getElementById('interactive').innerHTML = ''; // 中身を空に
+}
+
+async function fetchTitle(isbn) {
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    const data = await res.json();
+    if (data.items && data.items.length > 0) {
+      updateResult(isbn, data.items[0].volumeInfo.title);
+      return;
+    }
+  } catch (e) {}
+
+  try {
+    const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${isbn}`);
+    const data = await res.json();
+    if (data[0] && data[0].summary && data[0].summary.title) {
+      updateResult(isbn, data[0].summary.title);
+      return;
+    }
+  } catch (e) {}
+  document.getElementById("title").value = "タイトル取得できず（手入力推奨）";
+}
+
+function updateResult(isbn, title) {
+  document.getElementById("title").value = title;
+  saveToHistory(isbn, title);
+}
+
+function saveToHistory(isbn, title) {
+  let history = JSON.parse(localStorage.getItem("scan_history") || "[]");
+  const now = new Date();
+  const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+  history = history.filter(item => item.isbn !== isbn);
+  history.unshift({ isbn: isbn, title: title, time: timeStr });
+  if (history.length > 50) history.pop();
+  localStorage.setItem("scan_history", JSON.stringify(history));
+  displayHistory();
+}
+
+function displayHistory() {
+  const history = JSON.parse(localStorage.getItem("scan_history") || "[]");
+  const list = document.getElementById("history-list");
+  list.innerHTML = "";
+  history.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+    div.onclick = () => {
+      document.getElementById("isbn").value = item.isbn;
+      document.getElementById("title").value = item.title;
+      window.scrollTo(0, 0);
+    };
+    div.innerHTML = `<span style="display:block;color:#666;font-size:12px;">${item.time}</span><div style="font-weight:bold;">${item.title}</div><div style="color:#888; font-size:11px;">ISBN: ${item.isbn}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function clearHistory() { if (confirm("履歴を削除しますか？")) { localStorage.removeItem("scan_history"); displayHistory(); } }
+
+function openSearch(type) {
+  const isbn = document.getElementById("isbn").value.trim();
+  const title = document.getElementById("title").value.trim();
+  let url = "";
+  if (type === 'amazon') { if (!isbn) return alert("ISBNなし"); url = "https://www.amazon.co.jp/s?k=" + isbn; }
+  else if (type === 'yahoo') { if (!title) return alert("書名なし"); url = "https://auctions.yahoo.co.jp/closedsearch/closedsearch?p=" + encodeURIComponent(title); }
+  else if (type === 'kosho') { if (!title) return alert("書名なし"); url = "https://www.kosho.or.jp/products/list.php?mode=search&search_word=" + encodeURIComponent(title); }
+  else if (type === 'mercari') { if (!title) return alert("書名なし"); url = "https://www.mercari.com/jp/search/?keyword=" + encodeURIComponent(title) + "&sort=created_time&order=desc"; }
+  if (url) location.href = url;
+}
+</script>
+</body>
+</html>
